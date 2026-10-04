@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Evaluación Bioinstrumental - Apoyo Unipodal Completo</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- MediaPipe Pose y Camera Utils -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .canvas-overlay { position: absolute; top: 0; left: 0; transform: scaleX(-1); }
+    .video-flip { transform: scaleX(-1); }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen p-4 md:p-6 font-sans">
+  <div class="max-w-7xl mx-auto space-y-6">
+    
+    <!-- Encabezado -->
+    <header class="border-b border-slate-700 pb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+      <div>
+        <h1 class="text-2xl font-bold text-teal-400">Evaluación de Estabilidad Postural Unipodal</h1>
+        <p class="text-sm text-slate-400">Análisis Bioinstrumental - Detección Automática de Apoyo y Oscilaciones</p>
+      </div>
+      <div id="statusBadge" class="bg-amber-500/20 text-amber-300 px-4 py-2 rounded-lg font-medium border border-amber-500/30 text-sm">
+        Estado: Calibrando Línea Media
+      </div>
+    </header>
+
+    <!-- Panel Principal -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      
+      <!-- Video y Canvas Overlay -->
+      <div class="lg:col-span-2 bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+        <div class="flex justify-between items-center">
+          <h2 class="text-base font-semibold text-slate-200">Camara en Vivo & Tracking Biomecánico</h2>
+          <span id="legBadge" class="text-xs bg-slate-700 text-teal-300 px-3 py-1 rounded-full font-mono border border-teal-500/30">
+            Pie Detectado: Ambos Pies
+          </span>
+        </div>
+        <div class="relative aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center">
+          <video id="webcam" class="w-full h-full object-cover video-flip" autoplay playsinline muted></video>
+          <canvas id="outputCanvas" class="w-full h-full canvas-overlay"></canvas>
+        </div>
+        <div class="text-xs text-slate-400 bg-slate-900/60 p-3 rounded-lg border border-slate-700/50 space-y-1">
+          <p><strong>Pasos para la Prueba:</strong></p>
+          <ol class="list-decimal list-inside space-y-1 text-slate-300">
+            <li>Párese frente a la cámara en apoyo bípedo para definir la <strong>Línea Media (Eje Azul)</strong>.</li>
+            <li>Muestre la <strong>palma de la mano derecha por sobre el hombro</strong> para armar el inicio.</li>
+            <li>Levante un pie. El tiempo y la medición de oscilaciones iniciarán automáticamente.</li>
+            <li>Al volver a apoyar <strong>ambos pies en el piso</strong>, la prueba finalizará y se generará el informe final.</li>
+          </ol>
+        </div>
+      </div>
+
+      <!-- Métricas en Tiempo Real -->
+      <div class="space-y-4">
+        
+        <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-4">
+          <h2 class="text-base font-semibold text-slate-200">Métricas en Tiempo Real</h2>
+          
+          <div class="bg-slate-900/80 p-4 rounded-lg border border-slate-700">
+            <span class="text-xs uppercase tracking-wider text-slate-400">Duración Unipodal</span>
+            <div id="timerText" class="text-4xl font-mono font-bold text-teal-400 mt-1">00.0 s</div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-700">
+              <span class="text-xs text-slate-400">Pie Evaluado</span>
+              <div id="evalLegText" class="text-base font-semibold text-slate-100 mt-1">--</div>
+            </div>
+            <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-700">
+              <span class="text-xs text-slate-400">Desviación Instantánea</span>
+              <div id="currentDevText" class="text-base font-mono font-semibold text-slate-100 mt-1">0.0 px</div>
+            </div>
+            <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-700">
+              <span class="text-xs text-slate-400">Oscilación RMS</span>
+              <div id="rmsDevText" class="text-base font-mono font-semibold text-teal-300 mt-1">0.0 px</div>
+            </div>
+            <div class="bg-slate-900/80 p-3 rounded-lg border border-slate-700">
+              <span class="text-xs text-slate-400">Desviación Máxima</span>
+              <div id="maxDevText" class="text-base font-mono font-semibold text-rose-400 mt-1">0.0 px</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Botones de Control -->
+        <div class="bg-slate-800 p-4 rounded-xl border border-slate-700 flex gap-3">
+          <button id="btnReset" class="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-100 font-semibold py-2 px-4 rounded-lg transition text-sm">
+            Reiniciar / Calibrar
+          </button>
+          <button id="btnStop" class="flex-1 bg-rose-600 hover:bg-rose-500 text-white font-semibold py-2 px-4 rounded-lg transition text-sm">
+            Finalizar Manual
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gráfico de Oscilaciones en Tiempo Real -->
+    <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+      <h2 class="text-base font-semibold mb-2 text-slate-200">Desplazamiento Postural Lateral ($\Delta X$) respecto a la Línea Media</h2>
+      <div class="h-56">
+        <canvas id="chartOscilacion"></canvas>
+      </div>
+    </div>
+
+    <!-- Reporte Final: Tabla de Análisis Bioinstrumental -->
+    <div id="reportContainer" class="hidden bg-slate-800 p-6 rounded-xl border border-teal-500/40 space-y-4">
+      <div class="flex items-center justify-between border-b border-slate-700 pb-3">
+        <h2 class="text-lg font-bold text-teal-400">Resultados del Análisis Bioinstrumental</h2>
+        <span class="bg-teal-500/20 text-teal-300 text-xs px-3 py-1 rounded-full font-medium">Prueba Finalizada</span>
+      </div>
+
+      <div class="overflow-x-auto">
+        <table class="w-full text-left border-collapse text-sm">
+          <thead>
+            <tr class="bg-slate-900/80 text-slate-300 border-b border-slate-700">
+              <th class="p-3">Variable Bioinstrumental</th>
+              <th class="p-3">Valor Obtención</th>
+              <th class="p-3">Unidad</th>
+              <th class="p-3">Interpretación Clínica / Postural</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-slate-700 text-slate-200" id="summaryTableBody">
+            <!-- Rellenado dinámicamente con JS -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const videoElement = document.getElementById('webcam');
+    const canvasElement = document.getElementById('outputCanvas');
+    const canvasCtx = canvasElement.getContext('2d');
+    const statusBadge = document.getElementById('statusBadge');
+    const legBadge = document.getElementById('legBadge');
+    const timerText = document.getElementById('timerText');
+    const evalLegText = document.getElementById('evalLegText');
+    const currentDevText = document.getElementById('currentDevText');
+    const rmsDevText = document.getElementById('rmsDevText');
+    const maxDevText = document.getElementById('maxDevText');
+    const reportContainer = document.getElementById('reportContainer');
+    const summaryTableBody = document.getElementById('summaryTableBody');
+
+    // Estados: 'CALIBRATING', 'ARMED', 'TESTING', 'FINISHED'
+    let appState = 'CALIBRATING';
+    let baselineX = null;
+    let startTime = 0;
+    let totalDuration = 0;
+    let timerInterval = null;
+    let deviations = [];
+    let evaluatedLeg = 'No Identificado';
+    let doubleSupportFrameCounter = 0;
+    let chartInstance = null;
+
+    // Inicializar Chart.js
+    const ctxChart = document.getElementById('chartOscilacion').getContext('2d');
+    chartInstance = new Chart(ctxChart, {
+      type: 'line',
+      data: {
+        labels: [],
+        datasets: [{
+          label: 'Desviación Lateral (px)',
+          data: [],
+          borderColor: '#2dd4bf',
+          borderWidth: 2,
+          fill: false,
+          tension: 0.1,
+          pointRadius: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        scales: {
+          x: { title: { display: true, text: 'Tiempo (s)', color: '#94a3b8' }, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+          y: { title: { display: true, text: 'Desviación X (px)', color: '#94a3b8' }, grid: { color: '#334155' }, ticks: { color: '#94a3b8' } }
+        },
+        plugins: {
+          legend: { labels: { color: '#cbd5e1' } }
+        }
+      }
+    });
+
+    // Configuración MediaPipe Pose
+    const pose = new Pose({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+    });
+
+    pose.setOptions({
+      modelComplexity: 1,
+      smoothLandmarks: true,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+
+    pose.onResults(onResults);
+
+    function onResults(results) {
+      canvasElement.width = videoElement.videoWidth;
+      canvasElement.height = videoElement.videoHeight;
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+      if (!results.poseLandmarks) {
+        canvasCtx.restore();
+        return;
+      }
+
+      const lm = results.poseLandmarks;
+
+      // Puntos biomecánicos (Anatómicos)
+      const rightShoulder = lm[12], leftShoulder = lm[11];
+      const rightHip = lm[24], leftHip = lm[23];
+      const rightAnkle = lm[28], leftAnkle = lm[27];
+      const rightWrist = lm[16];
+
+      // Centroide del tronco (Línea Media)
+      const trunkXNormalized = (rightShoulder.x + leftShoulder.x + rightHip.x + leftHip.x) / 4;
+      const currentTrunkX = trunkXNormalized * canvasElement.width;
+
+      // LÓGICA DE DETECCIÓN DEL PIE DE APOYO (CORREGIDA)
+      // En MediaPipe, Y=0 es arriba y Y=1 es abajo (el piso).
+      // El tobillo apoyado tiene un Y MAYOR (más abajo, cerca de 1).
+      // El tobillo elevado tiene un Y MENOR (más arriba en el aire).
+      const ELEVATION_THRESHOLD = 0.04;
+      let detectedSupport = 'Ambos Pies';
+
+      // Si el tobillo IZQUIERDO está MÁS ARRIBA (menor Y) que el derecho:
+      if (leftAnkle.y < rightAnkle.y - ELEVATION_THRESHOLD) {
+        detectedSupport = 'Derecho (Pie Izq Elevado)';
+      } 
+      // Si el tobillo DERECHO está MÁS ARRIBA (menor Y) que el izquierdo:
+      else if (rightAnkle.y < leftAnkle.y - ELEVATION_THRESHOLD) {
+        detectedSupport = 'Izquierdo (Pie Der Elevado)';
+      }
+
+      legBadge.innerText = `Pie Detectado: ${detectedSupport}`;
+
+      // MAQUINA DE ESTADOS
+      if (appState === 'CALIBRATING') {
+        baselineX = currentTrunkX;
+        statusBadge.innerText = 'Estado: Listo (Muestre Palma Der)';
+        statusBadge.className = 'bg-amber-500/20 text-amber-300 px-4 py-2 rounded-lg font-medium border border-amber-500/30 text-sm';
+
+        // Detectar Señal de Inicio: Palma derecha sobre el hombro derecho
+        if (rightWrist.y < rightShoulder.y && rightWrist.visibility > 0.6) {
+          appState = 'ARMED';
+        }
+      }
+
+      else if (appState === 'ARMED') {
+        statusBadge.innerText = 'Estado: ¡Señal Recibida! Levanta un pie';
+        statusBadge.className = 'bg-blue-500/20 text-blue-300 px-4 py-2 rounded-lg font-medium border border-blue-500/30 text-sm animate-pulse';
+
+        if (detectedSupport !== 'Ambos Pies') {
+          startTest(detectedSupport.includes('Derecho') ? 'Derecho' : 'Izquierdo');
+        }
+      }
+
+      else if (appState === 'TESTING') {
+        const dev = currentTrunkX - baselineX;
+        deviations.push(dev);
+        const elapsed = ((Date.now() - startTime) / 1000);
+        totalDuration = elapsed;
+
+        currentDevText.innerText = `${dev.toFixed(1)} px`;
+        
+        const sumSquare = deviations.reduce((acc, v) => acc + (v * v), 0);
+        const rms = Math.sqrt(sumSquare / deviations.length);
+        const maxDev = Math.max(...deviations.map(v => Math.abs(v)));
+
+        rmsDevText.innerText = `${rms.toFixed(1)} px`;
+        maxDevText.innerText = `${maxDev.toFixed(1)} px`;
+
+        if (deviations.length % 3 === 0) {
+          chartInstance.data.labels.push(elapsed.toFixed(1));
+          chartInstance.data.datasets[0].data.push(dev.toFixed(2));
+          chartInstance.update('none');
+        }
+
+        // Detención por Doble Apoyo
+        if (detectedSupport === 'Ambos Pies') {
+          doubleSupportFrameCounter++;
+          if (doubleSupportFrameCounter >= 8) {
+            stopTest('Doble Apoyo Detectado');
+          }
+        } else {
+          doubleSupportFrameCounter = 0;
+        }
+      }
+
+      // RENDERIZADO VISUAL EN CANVAS
+      if (baselineX !== null) {
+        canvasCtx.beginPath();
+        canvasCtx.setLineDash([6, 6]);
+        canvasCtx.moveTo(baselineX, 0);
+        canvasCtx.lineTo(baselineX, canvasElement.height);
+        canvasCtx.strokeStyle = '#38bdf8';
+        canvasCtx.lineWidth = 3;
+        canvasCtx.stroke();
+        canvasCtx.setLineDash([]);
+      }
+
+      canvasCtx.beginPath();
+      canvasCtx.moveTo(currentTrunkX, 0);
+      canvasCtx.lineTo(currentTrunkX, canvasElement.height);
+      canvasCtx.strokeStyle = (appState === 'TESTING') ? '#f43f5e' : '#a855f7';
+      canvasCtx.lineWidth = 2;
+      canvasCtx.stroke();
+
+      canvasCtx.restore();
+    }
+
+    function startTest(supportLeg) {
+      appState = 'TESTING';
+      evaluatedLeg = supportLeg;
+      evalLegText.innerText = supportLeg;
+      startTime = Date.now();
+      deviations = [];
+      doubleSupportFrameCounter = 0;
+      reportContainer.classList.add('hidden');
+
+      chartInstance.data.labels = [];
+      chartInstance.data.datasets[0].data = [];
+      chartInstance.update();
+
+      statusBadge.innerText = `Estado: Midiendo Apoyo (${supportLeg})`;
+      statusBadge.className = 'bg-emerald-500/20 text-emerald-300 px-4 py-2 rounded-lg font-medium border border-emerald-500/30 text-sm';
+
+      timerInterval = setInterval(() => {
+        const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+        timerText.innerText = `${elapsed} s`;
+      }, 100);
+    }
+
+    function stopTest(reason = 'Finalizado') {
+      if (appState !== 'TESTING') return;
+      appState = 'FINISHED';
+      clearInterval(timerInterval);
+
+      statusBadge.innerText = `Estado: Test Concluido (${reason})`;
+      statusBadge.className = 'bg-slate-700 text-slate-300 px-4 py-2 rounded-lg font-medium border border-slate-600 text-sm';
+
+      generateSummaryReport();
+    }
+
+    function generateSummaryReport() {
+      const sumSquare = deviations.reduce((acc, v) => acc + (v * v), 0);
+      const rms = deviations.length > 0 ? Math.sqrt(sumSquare / deviations.length) : 0;
+      const maxDev = deviations.length > 0 ? Math.max(...deviations.map(v => Math.abs(v))) : 0;
+
+      let stabilityDiagnosis = 'Excelente Control Postural';
+      if (rms > 30 || maxDev > 50) {
+        stabilityDiagnosis = 'Inestabilidad Postural Elevada / Inclinación Fuerte';
+      } else if (rms > 15 || maxDev > 30) {
+        stabilityDiagnosis = 'Control Postural Moderado / Oscilaciones Presentes';
+      }
+
+      summaryTableBody.innerHTML = `
+        <tr>
+          <td class="p-3 font-semibold">Pie de Apoyo Reconocido</td>
+          <td class="p-3 font-mono text-teal-300">${evaluatedLeg}</td>
+          <td class="p-3 text-slate-400">Cualitativo</td>
+          <td class="p-3">Extremidad inferior que sostuvo la carga postural.</td>
+        </tr>
+        <tr>
+          <td class="p-3 font-semibold">Tiempo Total Unipodal (T)</td>
+          <td class="p-3 font-mono text-teal-300">${totalDuration.toFixed(2)}</td>
+          <td class="p-3 text-slate-400">Segundos (s)</td>
+          <td class="p-3">Tiempo transcurrido hasta retomar el doble apoyo.</td>
+        </tr>
+        <tr>
+          <td class="p-3 font-semibold">Desviación Máxima (Peak Sway)</td>
+          <td class="p-3 font-mono text-rose-400">${maxDev.toFixed(2)}</td>
+          <td class="p-3 text-slate-400">Píxeles (px)</td>
+          <td class="p-3">Máximo desplazamiento lateral registrado respecto al eje $X_0$.</td>
+        </tr>
+        <tr>
+          <td class="p-3 font-semibold">Dispersión Postural (RMS)</td>
+          <td class="p-3 font-mono text-teal-300">${rms.toFixed(2)}</td>
+          <td class="p-3 text-slate-400">Píxeles (px)</td>
+          <td class="p-3">Variabilidad global del balanceo mediolateral.</td>
+        </tr>
+        <tr>
+          <td class="p-3 font-semibold">Diagnóstico Biomecánico</td>
+          <td class="p-3 font-semibold text-amber-300" colspan="3">${stabilityDiagnosis}</td>
+        </tr>
+      `;
+
+      reportContainer.classList.remove('hidden');
+    }
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+      if (appState === 'TESTING') clearInterval(timerInterval);
+      appState = 'CALIBRATING';
+      baselineX = null;
+      deviations = [];
+      timerText.innerText = '00.0 s';
+      evalLegText.innerText = '--';
+      currentDevText.innerText = '0.0 px';
+      rmsDevText.innerText = '0.0 px';
+      maxDevText.innerText = '0.0 px';
+      legBadge.innerText = 'Pie Detectado: Ambos Pies';
+      reportContainer.classList.add('hidden');
+      chartInstance.data.labels = [];
+      chartInstance.data.datasets[0].data = [];
+      chartInstance.update();
+    });
+
+    document.getElementById('btnStop').addEventListener('click', () => stopTest('Detención Manual'));
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => { await pose.send({ image: videoElement }); },
+      width: 1280,
+      height: 720
+    });
+    camera.start();
+  </script>
+</body>
+</html>
